@@ -90,6 +90,6 @@ for file, count in file_summary.items():
     print(Fore.GREEN + f"{file}: {count} records")
 
 if not results:
-    print(Fore.RED + "No new records found.")
+    print(Fore.RED + "No new records found!!")
 else:
     print(Fore.YELLOW + f"{len(results)} new records added.")
