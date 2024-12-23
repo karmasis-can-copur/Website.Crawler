@@ -60,13 +60,17 @@ def process_url(url):
 
         # Linkleri çekmek için BeautifulSoup kullanıyoruz
         soup = BeautifulSoup(response.text, 'html.parser')
-        links = [a['href'] for a in soup.find_all('a', href=True) if a['href'].startswith("http")]
+        links = [a for a in soup.find_all('a', href=True) if a['href'].startswith("http")]
 
         # Her bir keyword ve link'i kontrol ediyoruz
         for keyword in lookup_keywords:
             for link in links:
-                if keyword.lower() in link.lower():
-                    result = (url, keyword, link, date_format)
+                href = link['href']
+                title = link.get('title', '').lower()
+
+                # Link içinde veya title'da keyword var mı kontrol ediliyor
+                if keyword.lower() in href.lower() or keyword.lower() in title:
+                    result = (url, keyword, href, date_format)
                     if result not in previous_results and result not in current_results:  # Yeni sonuç kontrolü
                         results.add(result)
                         current_results.add(result)  # Şu anki çalıştırma içinde ekleneni takip et
