@@ -4,6 +4,8 @@ from concurrent.futures import ThreadPoolExecutor
 import os
 import datetime
 from colorama import Fore, Style, init
+from requests.adapters import HTTPAdapter
+from requests.packages.urllib3.util.retry import Retry
 
 # Colorama başlatma
 init(autoreset=True)
@@ -15,8 +17,9 @@ with open('urls.txt', 'r') as f:
 with open('keywords.txt', 'r') as f:
     lookup_keywords = [line.strip() for line in f.readlines()]
 
-# Sonuçları depolamak için set kullanıyoruz (unique olması için)
+# Sonuçları depolamak için set kullanıyoruz (unique olması için sadece link bazında)
 results = set()
+unique_links = set()
 
 # Tarih formatı ve dosya isimlendirme
 current_date = datetime.date.today()
@@ -32,9 +35,11 @@ for i in range(7):  # Son 7 gün kontrol edilecek
     file_to_check = f"{date_to_check}.csv"
     if os.path.exists(file_to_check):
         checked_files.add(file_to_check)
-        with open(file_to_check, 'r') as f:
+        with open(file_to_check, 'r', encoding='utf-8') as f:
             for line in f:
-                previous_results.add(tuple(line.strip().split(',')))
+                parts = tuple(line.strip().split(','))
+                previous_results.add(parts)
+                unique_links.add(parts[2])  # Link'i unique olarak takip et
 
 # Mevcut çalıştırmada eklenen sonuçları tutmak için set
 current_results = set()
@@ -42,7 +47,7 @@ current_results = set()
 # Her bir dosyadaki sonuçları tekrar kontrol etme
 file_summary = {}
 for file in checked_files:
-    with open(file, 'r') as f:
+    with open(file, 'r', encoding='utf-8') as f:
         records = [line.strip().split(',') for line in f.readlines()]
         file_summary[file] = len(records)
         for record in records:
@@ -51,8 +56,13 @@ for file in checked_files:
 
 def process_url(url):
     try:
+        # Retry stratejisi ile session oluşturuyoruz
+        session = requests.Session()
+        retries = Retry(total=3, backoff_factor=1, status_forcelist=[500, 502, 503, 504])
+        session.mount('https://', HTTPAdapter(max_retries=retries))
+
         # Sayfa kaynağını getiriyoruz
-        response = requests.get(url, timeout=10)
+        response = session.get(url, timeout=10)
         response.raise_for_status()
 
         # Sayfa kaynak kodunu alıyoruz
@@ -70,10 +80,11 @@ def process_url(url):
 
                 # Link içinde veya title'da keyword var mı kontrol ediliyor
                 if keyword.lower() in href.lower() or keyword.lower() in title:
-                    result = (url, keyword, href, date_format)
-                    if result not in previous_results and result not in current_results:  # Yeni sonuç kontrolü
+                    # Sadece link bazında kontrol sağlıyoruz
+                    if href not in unique_links:  # Eğer link zaten eklenmişse atla
+                        result = (url, keyword, href, date_format)
                         results.add(result)
-                        current_results.add(result)  # Şu anki çalıştırma içinde ekleneni takip et
+                        unique_links.add(href)  # Link'i unique olarak takip et
                         print(Fore.YELLOW + f"Found new link: {result}")
 
     except Exception as e:
@@ -84,7 +95,7 @@ with ThreadPoolExecutor(max_workers=10) as executor:
     executor.map(process_url, url_list)
 
 # Sonuçları CSV formatında dosyaya kaydediyoruz
-with open(result_file, 'a') as f:
+with open(result_file, 'a', encoding='utf-8') as f:
     for result in results:
         f.write(','.join(result) + '\n')
 
